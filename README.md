@@ -1,7 +1,7 @@
 # R2GenGPT: Radiology Report Generation with Frozen LLMs
 
 ## Introduction
-![overview](https://github.com/wang-zhanyu/R2GenGPT/blob/main/images/align.png)
+<!-- ![overview](https://github.com/wang-zhanyu/R2GenGPT/blob/main/images/align.png) -->
 
 ## Getting Started
 ### Installation
@@ -77,16 +77,30 @@ bash scripts/6-2.shallow_test.sh
 This repository is under [BSD 3-Clause License](LICENSE.md).
 
 ```
-python -u train.py --batch_size 8 --val_batch_size 12 --freeze_vm True --vis_use_lora False --learning_rate 1e-4 --gradient_clip_val 1 --max_length 100 --min_new_tokens 80 --max_new_tokens 120 --repetition_penalty 2.0 --length_penalty 2.0  --num_workers 8 --devices 4 --max_epochs 5 --limit_val_batches 0.5 --val_check_interval 0.5 --num_sanity_val_steps 2 
+python -u train.py --batch_size 8 --val_batch_size 12 --freeze_vm True --vis_use_lora False --learning_rate 1e-4 --gradient_clip_val 1 --max_length 100 --min_new_tokens 80 --max_new_tokens 120 --repetition_penalty 2.0 --length_penalty 2.0  --num_workers 8 --devices 4 --max_epochs 5 --li
+mit_val_batches 0.5 --val_check_interval 0.5 --num_sanity_val_steps 2 
 ```
 ## pretrain iu-xray
 Pretrain clip
-```nohup python train_clip.py --batch_size 152 --val_batch_size 152 --test_batch_size  152 --max_epochs 25 --pretraining true --pretrain_path pretrain/iu-xray/v1 --annotation "/data/wyh21/iu_xray/annotation.json" --dataset "iu-xray" --base_dir "/data/wyh21/iu_xray/images" --strategy ddp_find_unused_parameters_true &
+```
+nohup python train_clip.py --batch_size 152 --val_batch_size 152 --test_batch_size  152 --max_epochs 25 --pretraining true  --annotation "/data/wyh21/iu_xray/annotation.json" --dataset "iu-xray" --base_dir "/data/wyh21/iu_xray/images" --strategy ddp_find_unused
+_parameters_true --pretrain_path /data/wyh21/Hint_R2GenGPT/pretrain/iu-xray &
 ``` 
 ## Train LLM on IU-Xray
-```nohup python train.py --batch_size 8 --val_batch_size 8 --test_batch_size 8 --max_epochs 20  --pretrain_path pretrain/iu-xray/v1 --annotation "/data/wyh21/iu_xray/annotation.json" --dataset "iu-xray" --base_dir "/data/wyh21/iu_xray/images" --strategy ddp_find_unused_parameters_true &
+```
+nohup python train.py --batch_size 8 --val_batch_size 8 --test_batch_size 8 --max_epochs 40  --pretrain_path pretrain/iu-xray/v1 --annotation "/data/wyh21/iu_xray/annotation.json" --dataset "iu-xray" --base_dir "/data/wyh21/iu_xray/images" --strategy ddp_find_unused_parameters_true  --max_length 60 --min_new_tokens 40 --max_new_tokens 100 --repetition_penalty 2.0 --length_penalty 2.0  --num_workers 8  --limit_val_batches 1.0 --val_check_interval 1.0 --num_sanity_val_steps 0 --savedmodel_path /data/wyh21/Hint_R2GenGPT/save/iu-xray/v1 --devices 0 1 2>&1 &
+```
 ``` 
 
 
+## pretrain MIMIC-CXR:  CLIP-Training
+Pretrain clip
+```
+nohup python train_clip.py --batch_size 160 --val_batch_size 160 --test_batch_size  160 --pretrain_max_epochs 3 --pretraining true  --dataset "mimic-cxr" --strategy ddp_find_unused_parameters_true --pretrain_path /data/wyh21/Hint_R2GenGPT/pretrain/mimic-cxr &
+```
 
-          
+
+##Train LLM on MIMIC-CXR
+```
+nohup python train.py --pretrain_path pretrain/iu-xray/v1  --pretrain_checkpoint_path /data/wyh21/Hint_R2GenGPT/pretrain/mimic-cxr/checkpoints/last.ckpt --strategy ddp_find_unused_parameters_true --num_workers 12 --savedmodel_path /data/wyh21/Hint_R2GenGPT/save/mimic-cxr --freeze_vm True --vis_use_lora False --learning_rate 1e-4 --gradient_clip_val 1 --max_length 100 --min_new_tokens 80 --max_new_tokens 120 --repetition_penalty 2.0 --length_penalty 2.0 --num_workers 8 --devices 4 --max_epochs 5 --limit_val_batches 0.5 --val_check_interval 0.5 --num_sanity_val_steps 2 --devices 2 3 4 5  &
+

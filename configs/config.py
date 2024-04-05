@@ -27,8 +27,7 @@ parser.add_argument('--lora_dropout', default=0.1, type=float, help='lora dropou
 parser.add_argument('--global_only', default=False, type=lambda x: (str(x).lower() == 'true'), help='use global embedding only')
 parser.add_argument('--low_resource', default=False, type=bool)
 parser.add_argument('--end_sym', default='</s>', type=str)
-
-parser.add_argument('--pretrain_checkpoint_path', default='/home/wyh21/report_generation/Hint_R2GenGPT/pretrain/iu-xray/v1/checkpoints/last.ckpt', type=str)
+parser.add_argument('--pretrain_checkpoint_path', default='/data/wyh21/Hint_R2GenGPT/pretrain/iu-xray/checkpoints/last.ckpt', type=str)
 
 # ======================== SavedModel Configs ===========================
 parser.add_argument('--savedmodel_path', type=str, default='/data/wyh21/Hint_R2GenGPT/save/mimic/v1')
@@ -55,7 +54,7 @@ parser.add_argument('--diversity_penalty', type=float, default=0)
 parser.add_argument('--temperature', type=float, default=0)
 
 # ====================== Pytorch Lightning ===========================
-parser.add_argument('--devices', type=int, default=4, help='how many gpus to use')
+#parser.add_argument('--devices', type=int, default=4, help='how many gpus to use')
 parser.add_argument('--num_nodes', type=int, default=1, help='Number of GPU nodes for distributed training.')
 parser.add_argument('--accelerator', type=str, default="gpu", choices=["cpu", "gpu", "tpu", "ipu", "hpu", "mps"], help='accelerator types')
 parser.add_argument('--strategy', type=str, default="ddp", help='default ddp for multi-gpus')
@@ -68,9 +67,9 @@ parser.add_argument('--every_n_train_steps', type=int, default=0, help='How many
 parser.add_argument('--val_check_interval', type=float, default=1.0, help='How often to check the validation set')
 parser.add_argument('--accumulate_grad_batches', type=int, default=1, help='Accumulates gradients over k batches before stepping the optimizer')
 parser.add_argument("--num_sanity_val_steps", type=int, default=2, help='Sanity check runs n validation batches before starting the training routine')
-
+parser.add_argument('--devices', nargs='+',type=int, help='<Required> Set flag', required=True)
 # ====================== Pretraining ===========================
-parser.add_argument('--embed_dim', type=int, default=512, help='how many gpus to use')
+parser.add_argument('--embed_dim', type=int, default=1024, help='how many gpus to use')
 parser.add_argument('--text_model', default='/data/wyh21/huggingface/models--emilyalsentzer--Bio_ClinicalBERT', type=str, help="LLM model to use")
 parser.add_argument('--pretrain_lr', default=1, type=float, help='pretring rate')
 parser.add_argument('--pretraining', type=bool, default=False)
@@ -79,5 +78,6 @@ parser.add_argument('--pretrain_batch', type=int, default=512, help='how many gp
 parser.add_argument('--pretrain_path', type=str, default='pretrain/mimic/v1')
 parser.add_argument('--pretrain_image_encoder_lr', type=float, default=1)
 parser.add_argument('--pretrain_text_encoder_lr', type=float, default=1)
-
-
+parser.add_argument('--hint_topk', type=int, default=8)
+parser.add_argument('--hint_selection_threthold', type=float, default=0.3)
+parser.add_argument('--num_head', type=int, default=8)

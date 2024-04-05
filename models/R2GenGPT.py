@@ -44,10 +44,18 @@ class R2GenGPT(pl.LightningModule):
         self.tokenizer=self.clip_model.tokenizer
         self.image_projection=self.clip_model.image_projection
         self.text_projection=self.clip_model.text_projection
+        self.hint_topk=args.hint_topk
+        self.hint_selection_threthold=args.hint_selection_threthold
+        self.embed_dim = args.embed_dim
+        self.num_heads = args.num_head
+        self.image_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
+        self.hint_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
+        self.image_cross_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
+        self.hint_cross_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
         
         #print(f'Loading vision encoder:{args.vision_model}')
         #self.visual_encoder = SwinModel.from_pretrained(args.vision_model)
-        print(3333333)
+        #print(3333333)
         if args.vis_use_lora:
             peft_config_visual = LoraConfig(
                                     r=args.vis_r,
@@ -156,9 +164,10 @@ class R2GenGPT(pl.LightningModule):
         #print(3)    
         image_embeds = torch.stack(image_embeds).mean(0)
         hint_embeds,disease_embed=self.retrieval_hints(global_image_embed)
-        final_embeds=self.cross_modal_feature_interaction(image_embeds,hint_embeds,disease_embed)
+        final_embeds=self.hint_inject(image_embeds,hint_embeds,disease_embed)
 
-        inputs_llama = self.llama_proj(final_embeds)
+        #inputs_llama = self.llama_proj(final_embeds)
+        inputs_llama=self.llama_proj(final_embeds)
         atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(image.device)
         return inputs_llama, atts_llama
     
@@ -182,22 +191,33 @@ class R2GenGPT(pl.LightningModule):
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
         p_attn = F.softmax(scores, dim = -1)
+        top_values, top_indices = torch.topk(p_attn, self.hint_topk, dim=-1)
         if dropout is not None:
             p_attn = dropout(p_attn)
         p_attn=p_attn.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
-        return p_attn*value
-
-    def cross_modal_feature_interaction(self,image_embed,hint_embed,disease_embed):
+        output=p_attn*value
+        top_indices=top_indices.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
+        return torch.gather(output,1,top_indices)
+    
+    def hint_inject(self,image_embed,hint_embed,disease_embed):
         #print(3)
         #hint_embed 120*14*1024 image_embed 120*49*1024 disease_embed:120*1024
         disease_embed=disease_embed.unsqueeze(1)
-        cross_image_emebd=self.attention(image_embed,hint_embed,hint_embed)
-        cross_hint_embed=self.hint_attention(disease_embed,hint_embed,hint_embed)
-        final_features=torch.cat([cross_image_emebd,cross_hint_embed],dim=-2)
+        #cross_image_emebd=self.attention(image_embed,hint_embed,hint_embed)
+        hint_embed=self.hint_attention(disease_embed,hint_embed,hint_embed)
+        hint_embed,image_embed=self.cross_modal_hint_interaction(hint_embed,image_embed)
+        final_features=torch.cat([hint_embed,image_embed],dim=-2)
         return  final_features
         
- 
-    #def cross_modal_hint_interaction()
+    def cross_modal_hint_interaction(self,hint_embed,image_embed):
+        #print(3)
+        hint_embed,_=self.hint_attention_layer(hint_embed,hint_embed,hint_embed)
+        image_embed,_==self.image_attention_layer(image_embed,image_embed,image_embed)
+        hint_embed,_==self.hint_cross_attention_layer(hint_embed,image_embed,image_embed)
+        image_embed,_==self.image_cross_attention_layer(image_embed,hint_embed,hint_embed)
+        return hint_embed,image_embed
+        #print(3)
+
     def retrieval_hints(self,global_image_embed):
         image_embeddings=self.image_projection(global_image_embed).squeeze()
         batch_size=global_image_embed.shape[0]
@@ -209,41 +229,10 @@ class R2GenGPT(pl.LightningModule):
         input_ids,atten_mask=self.tokenizer(self.hint_prompt, return_tensors="pt", padding=True, truncation=True)['input_ids'].to(self.text_encoder.device),self.tokenizer(self.hint_prompt, return_tensors="pt", padding=True, truncation=True)['attention_mask'].to(self.text_encoder.device)
         text_embeddings=self.text_projection(self.text_encoder(input_ids=input_ids,attention_mask=atten_mask)['last_hidden_state'][:,0, :])
         logits = (text_embeddings @ image_embeddings.T)
-        #hint_importance=F.softmax(logits,dim=-2).T
-        #text emebedding 5*256 -> batch_size*5*256, copy
+
         text_embeddings=text_embeddings.expand(batch_size,-1,-1)#120*5*256
-        #hint_importance 120*5 -> 120*5*256
-        #hint_importance=hint_importance.unsqueeze(-1).expand(-1,-1,text_embeddings.shape[-1])
-        #text_embeddings=text_embeddings*hint_importance
-        #self.hint_proj=self.hint_proj.to(text_embeddings.device)
+        #return dimension hint_embed 120*14*1024  disease_embed:120*1024
         return text_embeddings,image_embeddings
-        #image_embedding 120 49 1024
-        #hint_importance 120 * 5
-        #text embedding  5*256
-        #text encoder ouput 5*12*769
-
-
-        
-        # images_similarity = image_embeddings @ image_embeddings.T
-        # texts_similarity = text_embeddings @ text_embeddings.T
-        # targets = F.softmax(
-        #     (images_similarity + texts_similarity) / 2, dim=-1
-        # )
-        
-    # def _compute_losses(self, image_embeddings, text_embeddings):
-    #     logits = (text_embeddings @ image_embeddings.T) / self.temperature
-    #     images_similarity = image_embeddings @ image_embeddings.T
-    #     texts_similarity = text_embeddings @ text_embeddings.T
-    #     targets = F.softmax(
-    #         (images_similarity + texts_similarity) / 2 * self.temperature, dim=-1
-    #     )
-    #     images_loss = (-targets.T * self.log_softmax(logits.T)).sum(1)
-    #     texts_loss = (-targets * self.log_softmax(logits)).sum(1)
-    #     return (images_loss + texts_loss) / 2.0
-       
-       #160*256 5*256
-
-
 
 
 

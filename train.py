@@ -8,6 +8,8 @@ from lightning.pytorch import seed_everything
 import lightning.pytorch as pl
 #set gpu available
 #os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,4,5"
+#set gpu available
+#os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,4,5"
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 def train(args):
@@ -16,8 +18,9 @@ def train(args):
 
     trainer = pl.Trainer(
        # devices=args.devices,
-        devices=[0,3,4,5], 
-        #devices=[0],
+        #devices=[2,3,4,5], 
+        #devices=[4,5],
+        devices=args.devices,
         num_nodes=args.num_nodes,
         strategy=args.strategy,
         accelerator=args.accelerator,

@@ -41,8 +41,6 @@ class ImageEncoder(nn.Module):
     ) -> None:
         super().__init__()
         self.model = SwinModel.from_pretrained(model_name,add_pooling_layer=True)
-
-
         for param in self.model.parameters():
             param.requires_grad = trainable
 
