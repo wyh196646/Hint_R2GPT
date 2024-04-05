@@ -47,12 +47,18 @@ class R2GenGPT(pl.LightningModule):
         self.hint_topk=args.hint_topk
         self.hint_selection_threthold=args.hint_selection_threthold
         self.embed_dim = args.embed_dim
+        self.token_dim=args.token_dim
         self.num_heads = args.num_head
+        self.num_query_tokens=args.num_query_tokens
+        #map 768 to 1024
+        self.hint_projection=nn.Linear(self.token_dim,self.embed_dim)
         self.image_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
         self.hint_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
+    
         self.image_cross_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
         self.hint_cross_attention_layer=nn.MultiheadAttention(self.embed_dim, self.num_heads,batch_first=True)
-        
+        self.query_tokens = nn.Parameter(torch.ones(1, self.num_query_tokens, self.embed_dim))
+
         #print(f'Loading vision encoder:{args.vision_model}')
         #self.visual_encoder = SwinModel.from_pretrained(args.vision_model)
         #print(3333333)
@@ -95,7 +101,8 @@ class R2GenGPT(pl.LightningModule):
         if args.llm_use_lora:
             self.embed_tokens = self.llama_model.get_input_embeddings()
             peft_config = LoraConfig(
-                task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.llm_r, lora_alpha=args.llm_alpha, lora_dropout=args.lora_dropout
+                task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.llm_r, lora_alpha=args.llm_alpha, lora_dropout=args.lora_dropout,
+                target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj","lm_head"],
             )
             self.llama_model = get_peft_model(self.llama_model, peft_config)
             self.llama_model.print_trainable_parameters()
@@ -163,8 +170,8 @@ class R2GenGPT(pl.LightningModule):
             image_embeds.append(image_embed)
         #print(3)    
         image_embeds = torch.stack(image_embeds).mean(0)
-        hint_embeds,disease_embed=self.retrieval_hints(global_image_embed)
-        final_embeds=self.hint_inject(image_embeds,hint_embeds,disease_embed)
+        hint_embeds,disease_embed,clue_token_embedding=self.retrieval_hints(global_image_embed)
+        final_embeds=self.hint_inject(image_embeds,hint_embeds,disease_embed,clue_token_embedding)
 
         #inputs_llama = self.llama_proj(final_embeds)
         inputs_llama=self.llama_proj(final_embeds)
@@ -183,7 +190,7 @@ class R2GenGPT(pl.LightningModule):
             p_attn = dropout(p_attn)
         return torch.matmul(p_attn, value)
     
-    def hint_attention(self,query, key, value, mask=None, dropout=None):
+    def hint_attention(self,query, key, value,clue_token_embedding, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) \
@@ -194,28 +201,39 @@ class R2GenGPT(pl.LightningModule):
         top_values, top_indices = torch.topk(p_attn, self.hint_topk, dim=-1)
         if dropout is not None:
             p_attn = dropout(p_attn)
-        p_attn=p_attn.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
-        output=p_attn*value
-        top_indices=top_indices.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
+        # p_attn=p_attn.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
+        # output=p_attn*value
+        # top_indices=top_indices.squeeze().unsqueeze(-1).expand(-1,-1,value.shape[-1])
+        # return torch.gather(output,1,top_indices)
+        p_attn=p_attn.squeeze().unsqueeze(-1).unsqueeze(-1).expand(-1,-1,clue_token_embedding.shape[-2],clue_token_embedding.shape[-1])
+        clue_token_embedding=clue_token_embedding.unsqueeze(0).expand(query.shape[0],-1,-1,-1)
+        output=p_attn*clue_token_embedding
+        top_indices=top_indices.squeeze().unsqueeze(-1).unsqueeze(-1).expand(-1,-1,clue_token_embedding.shape[-2],clue_token_embedding.shape[-1])
         return torch.gather(output,1,top_indices)
     
-    def hint_inject(self,image_embed,hint_embed,disease_embed):
+    def hint_inject(self,image_embed,hint_embed,disease_embed,clue_token_embedding):
         #print(3)
         #hint_embed 120*14*1024 image_embed 120*49*1024 disease_embed:120*1024
         disease_embed=disease_embed.unsqueeze(1)
         #cross_image_emebd=self.attention(image_embed,hint_embed,hint_embed)
-        hint_embed=self.hint_attention(disease_embed,hint_embed,hint_embed)
-        hint_embed,image_embed=self.cross_modal_hint_interaction(hint_embed,image_embed)
+        hint_token_embed=self.hint_attention(disease_embed,hint_embed,hint_embed,clue_token_embedding)
+        hint_embed,image_embed=self.cross_modal_hint_interaction(hint_token_embed,image_embed)
         final_features=torch.cat([hint_embed,image_embed],dim=-2)
         return  final_features
         
-    def cross_modal_hint_interaction(self,hint_embed,image_embed):
+    def cross_modal_hint_interaction(self,hint_token_embed,image_embed):
         #print(3)
-        hint_embed,_=self.hint_attention_layer(hint_embed,hint_embed,hint_embed)
+        print(3)
+        #view(tensor.size(0),-1,  tensor.size(-1))
+        hint_token_embed=hint_token_embed.view(hint_token_embed.size(0),-1,hint_token_embed.size(-1))
+        hint_token_embed=self.hint_projection(hint_token_embed)
+        hint_embed,_=self.hint_attention_layer(hint_token_embed,hint_token_embed,hint_token_embed)
         image_embed,_==self.image_attention_layer(image_embed,image_embed,image_embed)
-        hint_embed,_==self.hint_cross_attention_layer(hint_embed,image_embed,image_embed)
-        image_embed,_==self.image_cross_attention_layer(image_embed,hint_embed,hint_embed)
-        return hint_embed,image_embed
+        
+        query_tokens = self.query_tokens.expand(hint_token_embed.size(0), -1, -1)
+        temp_img_embed,_=self.hint_cross_attention_layer(query_tokens,image_embed,image_embed)
+        temp_hint_embed,_=self.image_cross_attention_layer(query_tokens,hint_embed,hint_embed)
+        return temp_hint_embed,temp_img_embed
         #print(3)
 
     def retrieval_hints(self,global_image_embed):
@@ -228,11 +246,11 @@ class R2GenGPT(pl.LightningModule):
 
         input_ids,atten_mask=self.tokenizer(self.hint_prompt, return_tensors="pt", padding=True, truncation=True)['input_ids'].to(self.text_encoder.device),self.tokenizer(self.hint_prompt, return_tensors="pt", padding=True, truncation=True)['attention_mask'].to(self.text_encoder.device)
         text_embeddings=self.text_projection(self.text_encoder(input_ids=input_ids,attention_mask=atten_mask)['last_hidden_state'][:,0, :])
-        logits = (text_embeddings @ image_embeddings.T)
+        text_token_embeddings=self.text_encoder(input_ids=input_ids,attention_mask=atten_mask)['last_hidden_state']
 
         text_embeddings=text_embeddings.expand(batch_size,-1,-1)#120*5*256
         #return dimension hint_embed 120*14*1024  disease_embed:120*1024
-        return text_embeddings,image_embeddings
+        return text_embeddings,image_embeddings,text_token_embeddings
 
 
 

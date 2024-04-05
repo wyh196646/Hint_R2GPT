@@ -20,6 +20,7 @@ def train(args):
        # devices=args.devices,
         #devices=[2,3,4,5], 
         #devices=[4,5],
+        #devices=[0],
         devices=args.devices,
         num_nodes=args.num_nodes,
         strategy=args.strategy,
