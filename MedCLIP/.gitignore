@@ -1,49 +1,16 @@
-
-checkpoints/
-dataset_csvs/
-# src/*.sh
-*.ckpt
-tests/data/
-*.pt
-*.pth
-*.bin
+.idea/
+ReportGenerationMeetsGraph/data/NLMCXR_pngs
+ReportGenerationMeetsGraph/output/
 .DS_Store
-*mgb*
-DEBUG*
-*.svs
-*.tif
-*.tiff
-*.png
-*.jpg
-*.tsv
-*.jpeg
-*.bmp
-*.gif
-*.npy
-*.safetensors
-*.nii
-*.tsv.gz
-*.nii.gz
-*.h5
-*.hdf5
-*.hdf
-*.hdf4
-*.hdf5
-*.hdf5
-*.hdf5
-*.hdf5
-*.hdf5
-*.tar.gz
+
 # Byte-compiled / optimized / DLL files
-*.zip
 __pycache__/
 *.py[cod]
 *$py.class
-*.txt
-*.png
+
 # C extensions
 *.so
-*.jpg
+
 # Distribution / packaging
 .Python
 build/
@@ -92,13 +59,13 @@ coverage.xml
 # Translations
 *.mo
 *.pot
-*.json
+
 # Django stuff:
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-*.out
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -165,28 +132,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-sync.sh
-gpu1sync.sh
-.idea
-*.pdf
-**/._*
-**/*DS_*
-**.jsonl
-src/sbatch
-src/misc
-.vscode
-src/debug
-core.*
-*.csv
-*.h5
-*.pkl
-./finetune/wandb/*
-./finetune/wandb
-./downstream/finetune/wandb
-./downstream/finetune/wandb/*
-downstream/finetune/wandb/
-*.gz
-events.out.tfevents.*
-**/tensorboard/events.out.tfevents.*
-*.tsv.gz
-downstream/spatial/HisToGene/data/her2st/
+
+# dataset
+data
+local_data
+
+# checkpoints
+checkpoint
+ckpt
+checkpoints
+*.ckpt
+*.bin
+
+
